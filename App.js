@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import RepTest from './src/dev/RepTest';
 import TPoseScanScreen from './src/dev/TPoseScanScreen';
 import LiveTrackScreen from './src/dev/LiveTrackScreen';
+import SystemScanGPSScreen from './src/screens/SystemScanGPSScreen';
 
 export default function App() {
   const [screen, setScreen] = useState('menu');
@@ -14,6 +15,7 @@ export default function App() {
   if (screen === 'rep') return <RepTest onBack={() => setScreen('menu')} />;
   if (screen === 'scan') return <TPoseScanScreen onBack={() => setScreen('menu')} />;
   if (screen === 'track') return <LiveTrackScreen onBack={() => setScreen('menu')} />;
+  if (screen === 'gps') return <SystemScanGPSScreen onBack={() => setScreen('menu')} />;
 
   return (
     <View style={styles.screen}>
@@ -29,6 +31,11 @@ export default function App() {
       <Pressable style={styles.button} onPress={() => setScreen('track')}>
         <Text style={styles.buttonTitle}>LIVE TRACKING</Text>
         <Text style={styles.buttonText}>Body scan, motion calibration and live tracking</Text>
+      </Pressable>
+
+      <Pressable style={styles.button} onPress={() => setScreen('gps')}>
+        <Text style={styles.buttonTitle}>GPS QUEST</Text>
+        <Text style={styles.buttonText}>Live GPS jogging/running quest tracker</Text>
       </Pressable>
 
       <Pressable style={styles.button} onPress={() => setScreen('rep')}>
