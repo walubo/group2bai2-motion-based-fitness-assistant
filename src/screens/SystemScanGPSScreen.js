@@ -81,7 +81,15 @@ function GPSTestScreen({ onBack }) {
 
   return (
     <View style={styles.screen}>
-      <MapView style={StyleSheet.absoluteFill} initialRegion={region} ref={mapRef} showsUserLocation>
+      <MapView
+        style={StyleSheet.absoluteFill}
+        initialRegion={region}
+        ref={mapRef}
+        showsUserLocation
+        loadingEnabled
+        loadingBackgroundColor="#05080f"
+        loadingIndicatorColor="#4de8ff"
+      >
         <Polyline
           coordinates={gps.routeCoordinates}
           strokeColor={PURPLE}
