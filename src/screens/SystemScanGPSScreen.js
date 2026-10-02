@@ -6,11 +6,11 @@
 //   [ABORT QUEST]  -> quest FAILED, stops tracking
 //   [RESET QUEST]  -> back to IDLE, clears the route
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
 import useLocationTracking from '../hooks/useLocationTracking';
 import { HunterProvider, useHunter } from '../context/HunterContext';
+import OsmMap from '../components/OsmMap';
 
 const CYAN = '#4de8ff';
 const GREEN = '#7dff9b';
@@ -33,7 +33,6 @@ function GPSTestScreen({ onBack }) {
   const quest = useHunter();
   const [isTracking, setIsTracking] = useState(false);
   const gps = useLocationTracking(isTracking);
-  const mapRef = useRef(null);
 
   // Feed tracking values into the context (the "back end" decides the result).
   useEffect(() => {
@@ -45,13 +44,6 @@ function GPSTestScreen({ onBack }) {
   useEffect(() => {
     if (quest.questStatus === 'CLEARED' || quest.questStatus === 'FAILED') setIsTracking(false);
   }, [quest.questStatus]);
-
-  // Keep the map centred on the Hunter.
-  useEffect(() => {
-    if (gps.location && mapRef.current) {
-      mapRef.current.animateCamera({ center: gps.location }, { duration: 600 });
-    }
-  }, [gps.location]);
 
   const beginQuest = () => {
     gps.resetTracking();
@@ -72,33 +64,13 @@ function GPSTestScreen({ onBack }) {
   const statusLabel = denied ? 'PERMISSION DENIED' : STATUS_LABEL[quest.questStatus];
   const statusColor = quest.questStatus === 'CLEARED' ? GREEN : denied ? RED : CYAN;
 
-  const region = {
-    latitude: gps.location ? gps.location.latitude : 14.5995, // default: Manila
-    longitude: gps.location ? gps.location.longitude : 120.9842,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
-  };
-
   return (
     <View style={styles.screen}>
-      <MapView
+      <OsmMap
+        routeCoordinates={gps.routeCoordinates}
+        location={gps.location}
         style={StyleSheet.absoluteFill}
-        initialRegion={region}
-        ref={mapRef}
-        showsUserLocation
-        loadingEnabled
-        loadingBackgroundColor="#05080f"
-        loadingIndicatorColor="#4de8ff"
-      >
-        <Polyline
-          coordinates={gps.routeCoordinates}
-          strokeColor={PURPLE}
-          strokeWidth={4}
-        />
-        {gps.location && (
-          <Marker coordinate={gps.location} title="Hunter" pinColor={CYAN} />
-        )}
-      </MapView>
+      />
 
       <View style={styles.hud}>
         <Text style={styles.title}>SYSTEM SCAN: {quest.activeQuest || 'NO ACTIVE QUEST'}</Text>
