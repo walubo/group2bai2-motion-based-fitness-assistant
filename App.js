@@ -6,12 +6,14 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import RepTest from './src/dev/RepTest';
 import TPoseScanScreen from './src/dev/TPoseScanScreen';
+import LiveTrackScreen from './src/dev/LiveTrackScreen';
 
 export default function App() {
   const [screen, setScreen] = useState('menu');
 
   if (screen === 'rep') return <RepTest onBack={() => setScreen('menu')} />;
   if (screen === 'scan') return <TPoseScanScreen onBack={() => setScreen('menu')} />;
+  if (screen === 'track') return <LiveTrackScreen onBack={() => setScreen('menu')} />;
 
   return (
     <View style={styles.screen}>
@@ -22,6 +24,11 @@ export default function App() {
       <Pressable style={styles.button} onPress={() => setScreen('scan')}>
         <Text style={styles.buttonTitle}>SYSTEM SCAN</Text>
         <Text style={styles.buttonText}>Camera T-pose calibration</Text>
+      </Pressable>
+
+      <Pressable style={styles.button} onPress={() => setScreen('track')}>
+        <Text style={styles.buttonTitle}>LIVE TRACKING</Text>
+        <Text style={styles.buttonText}>Body scan, motion calibration and live tracking</Text>
       </Pressable>
 
       <Pressable style={styles.button} onPress={() => setScreen('rep')}>
