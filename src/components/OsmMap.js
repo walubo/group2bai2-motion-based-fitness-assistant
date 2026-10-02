@@ -1,6 +1,6 @@
-// Reusable map component (pure display, layer 4): draws the Hunter's route on
-// OpenStreetMap tiles inside a WebView, so it works on ANY phone — no Google
-// Play Services, no API key, no Google account needed. Only internet is
+// Reusable map component (pure display, layer 4): draws the Hunter's pin and
+// route trail on OpenStreetMap tiles inside a WebView, so it works on ANY
+// phone — no Google Play Services, no API key, no account. Only internet is
 // required (to load the map tiles, like any online map).
 //
 // All GPS logic lives in useLocationTracking; this component only renders
@@ -19,6 +19,9 @@ const MAP_HTML = `<!DOCTYPE html>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     html, body, #map { height: 100%; margin: 0; background: #05080f; }
+    /* OpenStreetMap tiles are light; this filter flips them into a dark
+       "System panel" map without any API key or paid provider. */
+    .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9); }
     .leaflet-control-attribution {
       background: rgba(5,8,15,0.7) !important;
       color: #a9b8d0 !important;
@@ -31,27 +34,27 @@ const MAP_HTML = `<!DOCTYPE html>
   <div id="map"></div>
   <script>
     var map = L.map('map', { zoomControl: false }).setView([14.5995, 120.9842], 16);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+      attribution: '&copy; OpenStreetMap contributors',
     }).addTo(map);
 
     var route = L.polyline([], { color: '#a855f7', weight: 4, opacity: 0.9 }).addTo(map);
-    var hunter = null; // the Hunter's position marker, created on the first point
+    var hunter = null; // the Hunter's position pin
 
     // The React side calls this every time new tracking data arrives.
+    // points = the trail so far; center = current position (may exist alone).
     window.updateMap = function (points, center) {
       route.setLatLngs(points);
-      if (points.length) {
-        var last = points[points.length - 1];
+      if (center) {
         if (!hunter) {
-          hunter = L.circleMarker(last, {
+          hunter = L.circleMarker(center, {
             radius: 7, color: '#4de8ff', weight: 2, fillColor: '#4de8ff', fillOpacity: 1,
           }).addTo(map);
         } else {
-          hunter.setLatLng(last);
+          hunter.setLatLng(center);
         }
-        if (center) map.setView(last, map.getZoom(), { animate: true });
+        map.setView(center, map.getZoom(), { animate: true });
       }
     };
   </script>
