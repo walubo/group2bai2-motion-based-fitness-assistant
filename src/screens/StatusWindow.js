@@ -95,8 +95,10 @@ export default function StatusWindow({
         />
       </View>
 
-      {/* Bottom tab bar */}
-      <BottomNav tabs={tabs} activeTab={activeTab} onChange={onTabChange} />
+      {/* Bottom tab bar (hidden when no tabs are passed) */}
+      {tabs.length > 0 && (
+        <BottomNav tabs={tabs} activeTab={activeTab} onChange={onTabChange} />
+      )}
     </View>
   );
 
