@@ -9,9 +9,8 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import useLocationTracking from '../hooks/useLocationTracking';
-import { HunterProvider, useHunter } from '../context/HunterContext';
+import { useHunter } from '../context/HunterContext';
 import OsmMap from '../components/OsmMap';
-
 const CYAN = '#4de8ff';
 const GREEN = '#7dff9b';
 const RED = '#ff5c7a';
@@ -135,13 +134,9 @@ function GPSTestScreen({ onBack }) {
   );
 }
 
-// The provider wraps only this screen for testing; later it wraps all of App.js.
+// The app shell (App.js) provides the single HunterProvider for the whole app.
 export default function SystemScanGPSScreen({ onBack }) {
-  return (
-    <HunterProvider>
-      <GPSTestScreen onBack={onBack} />
-    </HunterProvider>
-  );
+  return <GPSTestScreen onBack={onBack} />;
 }
 
 const styles = StyleSheet.create({
