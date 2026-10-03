@@ -1,13 +1,17 @@
-// ASCEND app shell: the Status Window is the home screen.
-// Start Quest -> System Scan GPS quest screen. State is shared through one
-// HunterProvider around the whole app, so EXP earned in a quest shows on the
-// dashboard immediately.
+// ASCEND app shell.
+// Home (Status Window) -> START QUEST -> Quest Board -> the three quests:
+//   SHADOW EXTRACTION (rep counter) / GATE CLEARANCE (GPS sprint) / SYSTEM SCAN
+// (body calibration). One HunterProvider wraps everything, so level, EXP and
+// quest status are shared by every screen.
 
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { HunterProvider, useHunter } from './src/context/HunterContext';
 import StatusWindow from './src/screens/StatusWindow';
+import QuestBoardScreen from './src/screens/QuestBoardScreen';
+import RepQuestScreen from './src/screens/RepQuestScreen';
 import SystemScanGPSScreen from './src/screens/SystemScanGPSScreen';
+import CalibrationScreen from './src/screens/CalibrationScreen';
 
 // The dashboard reads real state from the context and renders Torres's
 // pure-display component. The tab bar is intentionally not passed (hidden).
@@ -33,14 +37,16 @@ export default function App() {
   return (
     <HunterProvider>
       <StatusBar style="light" />
-      {screen === 'home' && (
-        <HomeScreen
-          onStartQuest={() => {
-            setScreen('gps');
-          }}
+      {screen === 'home' && <HomeScreen onStartQuest={() => setScreen('board')} />}
+      {screen === 'board' && (
+        <QuestBoardScreen
+          onBack={() => setScreen('home')}
+          onSelect={(questKey) => setScreen(questKey)}
         />
       )}
-      {screen === 'gps' && <SystemScanGPSScreen onBack={() => setScreen('home')} />}
+      {screen === 'rep' && <RepQuestScreen onBack={() => setScreen('board')} />}
+      {screen === 'gps' && <SystemScanGPSScreen onBack={() => setScreen('board')} />}
+      {screen === 'calib' && <CalibrationScreen onBack={() => setScreen('board')} />}
     </HunterProvider>
   );
 }
