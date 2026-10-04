@@ -40,7 +40,10 @@ function PoseCameraWeb({ onPose, onError, outline = null, style }) {
     <WebView
       ref={webRef}
       originWhitelist={['*']}
-      source={{ html: buildPoseHtml() }}
+      // baseUrl gives the page a https://localhost origin — a "secure context",
+      // which getUserMedia (camera) requires. Without it the camera API is
+      // silently unavailable and the page stays black.
+      source={{ html: buildPoseHtml(), baseUrl: 'https://localhost' }}
       style={style || StyleSheet.absoluteFill}
       javaScriptEnabled
       domStorageEnabled

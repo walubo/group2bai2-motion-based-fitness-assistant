@@ -27,11 +27,21 @@ const SIM_POSES = {
 export default function BodyScanScreen({ onBack }) {
   const [raw, setRaw] = useState(null); // latest landmark array from the engine
   const [size, setSize] = useState({ width: 480, height: 640 });
+  const [engineReady, setEngineReady] = useState(false);
   const [webError, setWebError] = useState(null);
   const [phase, setPhase] = useState('scan'); // 'scan' | 'track'
   const [sim, setSim] = useState(null); // null = real camera, else sim key
 
   const aspect = size.width > 0 && size.height > 0 ? size.width / size.height : 480 / 640;
+
+  // If the engine never reports ready, surface it instead of a black screen.
+  useEffect(() => {
+    if (sim || engineReady) return undefined;
+    const id = setTimeout(() => {
+      setWebError((e) => e || 'Engine did not start in 25 s — check internet, then reload.');
+    }, 25000);
+    return () => clearTimeout(id);
+  }, [sim, engineReady]);
 
   // WebView messages can arrive faster than renders — normalize on the way in.
   const landmarks = useMemo(() => {
@@ -60,8 +70,14 @@ export default function BodyScanScreen({ onBack }) {
   }, [aspect, phase, sim]);
 
   const handlePose = (lms, frameSize) => {
-    if (frameSize && frameSize.width) setSize(frameSize);
-    if (lms !== undefined) setRaw(lms); // undefined = engine-ready ping only
+    if (frameSize && frameSize.width) {
+      setSize(frameSize);
+      if (lms === undefined) setEngineReady(true); // engine-ready ping
+    }
+    if (lms !== undefined) {
+      setEngineReady(true);
+      setRaw(lms); // null = no pose visible, array = real landmarks
+    }
   };
 
   const enterTracking = () => {
@@ -124,6 +140,7 @@ export default function BodyScanScreen({ onBack }) {
           )}
 
           <Text style={styles.message}>{message}</Text>
+          {webError && !sim && <Text style={styles.errorBanner}>{'> ' + webError}</Text>}
           {phase === 'scan' && scan.calibration && (
             <Text style={styles.locked}>{'> Body profile locked, Hunter.'}</Text>
           )}
@@ -189,6 +206,7 @@ const styles = StyleSheet.create({
   moveBarOuter: { flex: 1, height: 5, backgroundColor: '#0a1630', borderRadius: 3 },
   moveBarInner: { height: 5, backgroundColor: colors.blueLight, borderRadius: 3 },
   message: { color: colors.mutedText, fontFamily: fonts.body, fontSize: 12, marginTop: 6 },
+  errorBanner: { color: colors.danger, fontFamily: fonts.heading, fontSize: 11, fontWeight: 'bold', marginTop: 4 },
   locked: { color: colors.success, fontFamily: fonts.heading, fontSize: 12, fontWeight: 'bold', marginTop: 4 },
   controls: {
     position: 'absolute',
