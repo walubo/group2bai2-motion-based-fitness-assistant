@@ -7,10 +7,16 @@ import { StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { buildPoseHtml } from '../camera/webPoseEngine';
 
-function PoseCameraWeb({ onPose, onError, outline = null, style }) {
+function PoseCameraWeb({ onPose, onError, outline = null, facing = 'user', style }) {
   const webRef = useRef(null);
   const handlers = useRef({ onPose, onError });
   handlers.current = { onPose, onError };
+
+  // Live camera switch: the page stops the old stream and opens the new lens.
+  useEffect(() => {
+    if (!webRef.current) return;
+    webRef.current.injectJavaScript('window.setCamera(' + JSON.stringify(facing) + '); true;');
+  }, [facing]);
 
   const handleMessage = (event) => {
     let data = null;

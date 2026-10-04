@@ -31,6 +31,7 @@ export default function BodyScanScreen({ onBack }) {
   const [webError, setWebError] = useState(null);
   const [phase, setPhase] = useState('scan'); // 'scan' | 'track'
   const [sim, setSim] = useState(null); // null = real camera, else sim key
+  const [facing, setFacing] = useState('user'); // 'user' (front) | 'environment' (back)
 
   const aspect = size.width > 0 && size.height > 0 ? size.width / size.height : 480 / 640;
 
@@ -105,9 +106,19 @@ export default function BodyScanScreen({ onBack }) {
           : 'Starting the live tracker...'
         : scan.message;
 
+  // Which parts the System currently sees (both phases use the same
+  // BODY_PARTS thresholds — scan from the validator, track from the tracker).
+  const partsView = phase === 'track' ? (snapshot && snapshot.parts) : scan.parts;
+
   return (
     <View style={styles.screen}>
-      <PoseCameraWeb onPose={handlePose} onError={setWebError} outline={outline} style={StyleSheet.absoluteFill} />
+      <PoseCameraWeb
+        onPose={handlePose}
+        onError={setWebError}
+        outline={outline}
+        facing={facing}
+        style={StyleSheet.absoluteFill}
+      />
 
       <FadeSlideIn style={styles.hud}>
         <View style={styles.hudInner}>
@@ -140,7 +151,22 @@ export default function BodyScanScreen({ onBack }) {
           )}
 
           <Text style={styles.message}>{message}</Text>
+
+          {/* Live parts checklist: exactly what the System is detecting */}
           {webError && !sim && <Text style={styles.errorBanner}>{'> ' + webError}</Text>}
+          {partsView && (
+            <View style={styles.partsGrid}>
+              {Object.entries(partsView).map(([name, p]) => (
+                <View key={name} style={[styles.partChip, p.ok && styles.partOk]}>
+                  <Text style={[styles.partText, { color: p.ok ? colors.success : colors.danger }]}>
+                    {p.ok ? '\u2713 ' : '\u2717 '}
+                    {p.label.toUpperCase()}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
           {phase === 'scan' && scan.calibration && (
             <Text style={styles.locked}>{'> Body profile locked, Hunter.'}</Text>
           )}
@@ -179,6 +205,11 @@ export default function BodyScanScreen({ onBack }) {
         )}
 
         <View style={styles.row}>
+          <GlowPressable glowColor={colors.blueLight} onPress={() => setFacing(facing === 'user' ? 'environment' : 'user')} style={styles.button}>
+            <Text style={[styles.buttonText, { color: colors.blueLight }]}>
+              {facing === 'user' ? 'USE BACK CAM' : 'USE FRONT CAM'}
+            </Text>
+          </GlowPressable>
           <GlowPressable glowColor={colors.mutedText} onPress={restartScan} style={styles.button}>
             <Text style={[styles.buttonText, { color: colors.mutedText }]}>RESTART</Text>
           </GlowPressable>
@@ -207,6 +238,10 @@ const styles = StyleSheet.create({
   moveBarInner: { height: 5, backgroundColor: colors.blueLight, borderRadius: 3 },
   message: { color: colors.mutedText, fontFamily: fonts.body, fontSize: 12, marginTop: 6 },
   errorBanner: { color: colors.danger, fontFamily: fonts.heading, fontSize: 11, fontWeight: 'bold', marginTop: 4 },
+  partsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: spacing.sm },
+  partChip: { borderWidth: 1, borderColor: '#12203a', borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.4)', paddingVertical: 3, paddingHorizontal: 7 },
+  partOk: { borderColor: colors.success },
+  partText: { fontFamily: fonts.heading, fontSize: 9, fontWeight: 'bold', letterSpacing: 1 },
   locked: { color: colors.success, fontFamily: fonts.heading, fontSize: 12, fontWeight: 'bold', marginTop: 4 },
   controls: {
     position: 'absolute',
