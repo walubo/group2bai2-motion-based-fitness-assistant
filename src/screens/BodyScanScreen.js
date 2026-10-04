@@ -8,7 +8,7 @@
 // A small simulation fallback exists in case the camera/CDN is unavailable,
 // clearly labelled — the default path is the real detector.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import PoseCameraWeb from '../components/PoseCameraWeb';
 import { normalizeLandmarks } from '../camera/poseAdapter';
