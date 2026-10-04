@@ -2,15 +2,18 @@
 // (33 landmarks, the same model native apps use) running as WebAssembly
 // inside a WebView, analysing the live camera feed frame by frame.
 //
-// Visuals drawn on the canvas so they stay perfectly in sync with the video:
-// - per-part colored bones with labels (HEAD / TORSO / L ARM / R ARM / ...)
-// - the T-pose outline during calibration (pushed in via window.setOutline)
-// The page reports landmarks to React with:
-//   postMessage({ type: 'pose', landmarks: [...33 {x,y,z,visibility}] | null, w, h })
-// Camera can be switched live with: window.setCamera('user' | 'environment')
+// Visuals are drawn on the canvas so they stay perfectly in sync with the
+// video, and they are DETECTION-DRIVEN: a body part is only drawn once the
+// detector actually sees it — head as a circle, torso as a filled quad,
+// arms and legs as colored bone lines, each with a name label.
+//
+// The camera is requested at high resolution and letterboxed (object-fit:
+// contain) so nothing is cropped — no fake "2x zoom".
+//
+// Reports to React: postMessage({ type:'pose', landmarks| null, w, h })
+// Camera switch:    window.setCamera('user' | 'environment')
+// Outline push:     window.setOutline({ points, connections, head, visible })
 
-// MediaPipe drawing connections (landmark index pairs), matching
-// src/camera/landmarks.js SKELETON_CONNECTIONS.
 var CONNECTIONS = [
   [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
   [11, 23], [12, 24], [23, 24], [23, 25], [25, 27],
@@ -21,24 +24,23 @@ export function buildPoseHtml() {
   return [
     '<!DOCTYPE html><html><head><meta charset="utf-8" />',
     '<meta name="viewport" content="width=device-width, initial-scale=1" />',
+    // contain = letterbox the full frame: no cropping, no artificial zoom
     '<style>html,body{margin:0;padding:0;background:#000;overflow:hidden;height:100%}',
-    'video,c{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}</style></head><body>',
+    'video,c{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}</style></head><body>',
     '<video id="v" playsinline autoplay muted></video>',
     '<canvas id="c"></canvas>',
     '<script type="module">',
     'var MODEL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";',
     'var WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";',
     'var LIB = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";',
-    'var CONN = ' + JSON.stringify(CONNECTIONS) + ';',
-    // Body parts drawn each with their own color and label so the Hunter can
-    // see exactly what the System is tracking.
+    // Each part: which landmarks to watch, which bones to draw, its color.
     'var PARTS = [',
-    '  { label: "HEAD",   color: "#4de8ff", joints: [0, 7, 8],          bones: [] },',
-    '  { label: "TORSO",  color: "#2f7bff", joints: [11, 12, 23, 24],  bones: [[11, 12], [11, 23], [12, 24], [23, 24]] },',
-    '  { label: "L ARM",  color: "#a855f7", joints: [11, 13, 15],      bones: [[11, 13], [13, 15]] },',
-    '  { label: "R ARM",  color: "#ff9f43", joints: [12, 14, 16],      bones: [[12, 14], [14, 16]] },',
-    '  { label: "L LEG",  color: "#7dff9b", joints: [23, 25, 27],      bones: [[23, 25], [25, 27]] },',
-    '  { label: "R LEG",  color: "#ff7ad9", joints: [24, 26, 28],      bones: [[24, 26], [26, 28]] },',
+    '  { label: "HEAD",   color: "#4de8ff", joints: [0, 7, 8],         bones: [], quad: false },',
+    '  { label: "TORSO",  color: "#2f7bff", joints: [11, 12, 23, 24],  bones: [[11, 12], [11, 23], [12, 24], [23, 24]], quad: true },',
+    '  { label: "L ARM",  color: "#a855f7", joints: [11, 13, 15],      bones: [[11, 13], [13, 15]], quad: false },',
+    '  { label: "R ARM",  color: "#ff9f43", joints: [12, 14, 16],      bones: [[12, 14], [14, 16]], quad: false },',
+    '  { label: "L LEG",  color: "#7dff9b", joints: [23, 25, 27],      bones: [[23, 25], [25, 27]], quad: false },',
+    '  { label: "R LEG",  color: "#ff7ad9", joints: [24, 26, 28],      bones: [[24, 26], [26, 28]], quad: false },',
     '];',
     'function send(obj) { window.ReactNativeWebView.postMessage(JSON.stringify(obj)); }',
     'function fail(msg) { send({ type: "error", message: msg }); }',
@@ -50,45 +52,60 @@ export function buildPoseHtml() {
     'var c = document.getElementById("c");',
     'var ctx = c.getContext("2d");',
     'window.setCamera = function (f) { facing = f; };', // replaced once the stream exists
+    'function vis(p) { return p && p.visibility !== undefined ? p.visibility : (p ? 1 : 0); }',
     'function partDetected(lms, part) {',
     '  var sum = 0;',
-    '  for (var i = 0; i < part.joints.length; i++) {',
-    '    var p = lms[part.joints[i]];',
-    '    sum += p && p.visibility !== undefined ? p.visibility : (p ? 1 : 0);',
-    '  }',
+    '  for (var i = 0; i < part.joints.length; i++) sum += vis(lms[part.joints[i]]);',
     '  return sum / part.joints.length > 0.5;',
     '}',
-    'function drawParts(lms, ctx, W, H) {',
+    'function label(ctx, text, x, y, color, W, H) {',
     '  var fontSize = Math.max(13, Math.round(H * 0.024));',
-    '  ctx.lineWidth = 3;',
     '  ctx.font = "bold " + fontSize + "px monospace";',
     '  ctx.textAlign = "center";',
+    '  var tw = ctx.measureText(text).width;',
+    '  ctx.fillStyle = "rgba(0,0,0,0.55)";',
+    '  ctx.fillRect(x - tw / 2 - 4, y - fontSize - 6, tw + 8, fontSize + 6);',
+    '  ctx.fillStyle = color;',
+    '  ctx.fillText(text, x, y);',
+    '}',
+    // DETECTION-DRIVEN drawing: undetected parts are not drawn at all.
+    'function drawParts(lms, ctx, W, H) {',
     '  for (var i = 0; i < PARTS.length; i++) {',
     '    var part = PARTS[i];',
-    '    var detected = partDetected(lms, part);',
-    '    var cx = 0, cy = 0;',
-    '    for (var k = 0; k < part.joints.length; k++) {',
-    '      var p = lms[part.joints[k]];',
-    '      cx += p.x; cy += p.y;',
-    '    }',
-    '    cx = (cx / part.joints.length) * W;',
-    '    cy = (cy / part.joints.length) * H;',
-    '    ctx.globalAlpha = detected ? 1 : 0.25;',
+    '    if (!partDetected(lms, part)) continue; // nothing detected -> nothing drawn',
     '    ctx.strokeStyle = part.color;',
-    '    for (var b = 0; b < part.bones.length; b++) {',
-    '      var a = lms[part.bones[b][0]], q = lms[part.bones[b][1]];',
-    '      ctx.beginPath(); ctx.moveTo(a.x * W, a.y * H); ctx.lineTo(q.x * W, q.y * H); ctx.stroke();',
-    '    }',
+    '    ctx.fillStyle = part.color;',
+    '    ctx.lineWidth = 3;',
     '    if (part.label === "HEAD") {',
-    '      ctx.beginPath(); ctx.arc(lms[0].x * W, lms[0].y * H, H * 0.045, 0, 7); ctx.stroke();',
+    '      // circle around the head, sized from the ears',
+    '      var eL = lms[7], eR = lms[8], nose = lms[0];',
+    '      var earDist = Math.hypot(eL.x - eR.x, eL.y - eR.y) * W;',
+    '      var r = Math.max(earDist * 0.65, H * 0.035);',
+    '      ctx.beginPath(); ctx.arc(nose.x * W, nose.y * H, r, 0, 7); ctx.stroke();',
+    '      label(ctx, part.label, nose.x * W, nose.y * H - r - 6, part.color, W, H);',
+    '    } else {',
+    '      for (var b = 0; b < part.bones.length; b++) {',
+    '        var a = lms[part.bones[b][0]], q = lms[part.bones[b][1]];',
+    '        ctx.beginPath(); ctx.moveTo(a.x * W, a.y * H); ctx.lineTo(q.x * W, q.y * H); ctx.stroke();',
+    '      }',
+    '      if (part.quad) {',
+    '        // torso as a filled panel so it reads as "body"',
+    '        var sL = lms[11], sR = lms[12], hL = lms[23], hR = lms[24];',
+    '        ctx.beginPath();',
+    '        ctx.moveTo(sL.x * W, sL.y * H); ctx.lineTo(sR.x * W, sR.y * H);',
+    '        ctx.lineTo(hR.x * W, hR.y * H); ctx.lineTo(hL.x * W, hL.y * H);',
+    '        ctx.closePath();',
+    '        ctx.globalAlpha = 0.18; ctx.fill(); ctx.globalAlpha = 1;',
+    '      }',
+    '      // joint dots',
+    '      for (var j = 0; j < part.joints.length; j++) {',
+    '        var p = lms[part.joints[j]];',
+    '        ctx.beginPath(); ctx.arc(p.x * W, p.y * H, 4, 0, 7); ctx.fill();',
+    '      }',
+    '      var cx = 0, cy = 0;',
+    '      for (var k = 0; k < part.joints.length; k++) { cx += lms[part.joints[k]].x; cy += lms[part.joints[k]].y; }',
+    '      label(ctx, part.label, (cx / part.joints.length) * W, (cy / part.joints.length) * H - H * 0.05, part.color, W, H);',
     '    }',
-    '    var label = detected ? part.label : part.label + " ?";',
-    '    var tw = ctx.measureText(label).width;',
-    '    ctx.fillStyle = "rgba(0,0,0,0.55)";',
-    '    ctx.fillRect(cx - tw / 2 - 4, cy - fontSize - 8, tw + 8, fontSize + 6);',
-    '    ctx.fillStyle = detected ? part.color : "#6e7477";',
-    '    ctx.fillText(label, cx, cy - 4);',
-    '    ctx.globalAlpha = 1;',
     '  }',
     '}',
     'function drawOutline(o, ctx, W, H) {',
@@ -120,10 +137,13 @@ export function buildPoseHtml() {
     '        baseOptions: { modelAssetPath: MODEL, delegate: "CPU" },',
     '        runningMode: "VIDEO", numPoses: 1 });',
     '    }',
+    '    // Higher resolution = the wide lens, not the cropped/zoomed one.',
+    '    var CONSTRAINTS = function (f) {',
+    '      return { video: { facingMode: { ideal: f }, width: { ideal: 720 }, height: { ideal: 1280 } }, audio: false };',
+    '    };',
     '    var gotStream = null;',
     '    try {',
-    '      gotStream = await navigator.mediaDevices.getUserMedia({',
-    '        video: { facingMode: { ideal: facing }, width: { ideal: 480 }, height: { ideal: 640 } }, audio: false });',
+    '      gotStream = await navigator.mediaDevices.getUserMedia(CONSTRAINTS(facing));',
     '    } catch (camErr) {',
     '      var name = camErr && camErr.name ? camErr.name : "";',
     '      if (name === "NotAllowedError") fail("Camera permission was denied. Allow the camera and reload.");',
@@ -140,8 +160,7 @@ export function buildPoseHtml() {
     '      facing = f;',
     '      try {',
     '        stream.getTracks().forEach(function (t) { t.stop(); });',
-    '        stream = await navigator.mediaDevices.getUserMedia({',
-    '          video: { facingMode: { ideal: f }, width: { ideal: 480 }, height: { ideal: 640 } }, audio: false });',
+    '        stream = await navigator.mediaDevices.getUserMedia(CONSTRAINTS(f));',
     '        v.srcObject = stream;',
     '        await v.play();',
     '      } catch (err) {',
