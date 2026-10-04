@@ -2,38 +2,33 @@
 // (33 landmarks, the same model native apps use) running as WebAssembly
 // inside a WebView, analysing the live camera feed frame by frame.
 //
-// Visuals are drawn on the canvas so they stay perfectly in sync with the
-// video, and they are DETECTION-DRIVEN: a body part is only drawn once the
-// detector actually sees it — head as a circle, torso as a filled quad,
-// arms and legs as colored bone lines, each with a name label.
+// The video frame is drawn INTO the same canvas as the skeleton overlay, so
+// the overlay can never drift out of position: one surface, one coordinate
+// system. The frame is letterboxed inside the canvas (no crop, no zoom), and
+// landmarks are mapped through the exact same letterbox rectangle.
 //
-// The camera is requested at high resolution and letterboxed (object-fit:
-// contain) so nothing is cropped — no fake "2x zoom".
+// DETECTION-DRIVEN visuals: a part is only drawn once the detector sees it —
+// head as a circle, torso as a filled panel, arms/legs as colored bones.
 //
 // Reports to React: postMessage({ type:'pose', landmarks| null, w, h })
 // Camera switch:    window.setCamera('user' | 'environment')
 // Outline push:     window.setOutline({ points, connections, head, visible })
 
-var CONNECTIONS = [
-  [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
-  [11, 23], [12, 24], [23, 24], [23, 25], [25, 27],
-  [24, 26], [26, 28], [0, 11], [0, 12],
-];
-
 export function buildPoseHtml() {
   return [
     '<!DOCTYPE html><html><head><meta charset="utf-8" />',
     '<meta name="viewport" content="width=device-width, initial-scale=1" />',
-    // contain = letterbox the full frame: no cropping, no artificial zoom
     '<style>html,body{margin:0;padding:0;background:#000;overflow:hidden;height:100%}',
-    'video,c{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}</style></head><body>',
+    // The raw <video> is only a decoding source; everything visible is drawn
+    // on the canvas, so CSS scaling can never desync video and skeleton.
+    '#v{position:absolute;width:2px;height:2px;opacity:0;pointer-events:none}',
+    'c{position:absolute;inset:0;width:100%;height:100%}</style></head><body>',
     '<video id="v" playsinline autoplay muted></video>',
     '<canvas id="c"></canvas>',
     '<script type="module">',
     'var MODEL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";',
     'var WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";',
     'var LIB = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";',
-    // Each part: which landmarks to watch, which bones to draw, its color.
     'var PARTS = [',
     '  { label: "HEAD",   color: "#4de8ff", joints: [0, 7, 8],         bones: [], quad: false },',
     '  { label: "TORSO",  color: "#2f7bff", joints: [11, 12, 23, 24],  bones: [[11, 12], [11, 23], [12, 24], [23, 24]], quad: true },',
@@ -51,15 +46,28 @@ export function buildPoseHtml() {
     'var v = document.getElementById("v");',
     'var c = document.getElementById("c");',
     'var ctx = c.getContext("2d");',
-    'window.setCamera = function (f) { facing = f; };', // replaced once the stream exists
+    'var rect = { dx: 0, dy: 0, dw: 0, dh: 0 }; // letterboxed video rect on the canvas',
+    'window.setCamera = function (f) { facing = f; };', // replaced once the stream exists',
+    'function fitRect() {',
+    '  var W = window.innerWidth, H = window.innerHeight;',
+    '  if (c.width !== W) c.width = W;',
+    '  if (c.height !== H) c.height = H;',
+    '  if (!v.videoWidth || !v.videoHeight) return false;',
+    '  var s = Math.min(W / v.videoWidth, H / v.videoHeight);',
+    '  rect.dw = v.videoWidth * s; rect.dh = v.videoHeight * s;',
+    '  rect.dx = (W - rect.dw) / 2; rect.dy = (H - rect.dh) / 2;',
+    '  return true;',
+    '}',
+    'function PX(p) { return rect.dx + p.x * rect.dw; }',
+    'function PY(p) { return rect.dy + p.y * rect.dh; }',
     'function vis(p) { return p && p.visibility !== undefined ? p.visibility : (p ? 1 : 0); }',
     'function partDetected(lms, part) {',
     '  var sum = 0;',
     '  for (var i = 0; i < part.joints.length; i++) sum += vis(lms[part.joints[i]]);',
     '  return sum / part.joints.length > 0.5;',
     '}',
-    'function label(ctx, text, x, y, color, W, H) {',
-    '  var fontSize = Math.max(13, Math.round(H * 0.024));',
+    'function label(ctx, text, x, y, color) {',
+    '  var fontSize = Math.max(13, Math.round(c.height * 0.024));',
     '  ctx.font = "bold " + fontSize + "px monospace";',
     '  ctx.textAlign = "center";',
     '  var tw = ctx.measureText(text).width;',
@@ -69,54 +77,55 @@ export function buildPoseHtml() {
     '  ctx.fillText(text, x, y);',
     '}',
     // DETECTION-DRIVEN drawing: undetected parts are not drawn at all.
-    'function drawParts(lms, ctx, W, H) {',
+    'function drawParts(lms, ctx) {',
+    '  var W = c.width, H = c.height;',
     '  for (var i = 0; i < PARTS.length; i++) {',
     '    var part = PARTS[i];',
-    '    if (!partDetected(lms, part)) continue; // nothing detected -> nothing drawn',
+    '    if (!partDetected(lms, part)) continue;',
     '    ctx.strokeStyle = part.color;',
     '    ctx.fillStyle = part.color;',
     '    ctx.lineWidth = 3;',
     '    if (part.label === "HEAD") {',
-    '      // circle around the head, sized from the ears',
     '      var eL = lms[7], eR = lms[8], nose = lms[0];',
-    '      var earDist = Math.hypot(eL.x - eR.x, eL.y - eR.y) * W;',
-    '      var r = Math.max(earDist * 0.65, H * 0.035);',
-    '      ctx.beginPath(); ctx.arc(nose.x * W, nose.y * H, r, 0, 7); ctx.stroke();',
-    '      label(ctx, part.label, nose.x * W, nose.y * H - r - 6, part.color, W, H);',
+    '      var earDist = Math.hypot(PX(eL) - PX(eR), PY(eL) - PY(eR));',
+    '      var r = Math.max(earDist * 0.75, H * 0.035);',
+    '      ctx.beginPath(); ctx.arc(PX(nose), PY(nose), r, 0, 7); ctx.stroke();',
+    '      label(ctx, part.label, PX(nose), PY(nose) - r - 6, part.color);',
     '    } else {',
     '      for (var b = 0; b < part.bones.length; b++) {',
     '        var a = lms[part.bones[b][0]], q = lms[part.bones[b][1]];',
-    '        ctx.beginPath(); ctx.moveTo(a.x * W, a.y * H); ctx.lineTo(q.x * W, q.y * H); ctx.stroke();',
+    '        ctx.beginPath(); ctx.moveTo(PX(a), PY(a)); ctx.lineTo(PX(q), PY(q)); ctx.stroke();',
     '      }',
     '      if (part.quad) {',
-    '        // torso as a filled panel so it reads as "body"',
     '        var sL = lms[11], sR = lms[12], hL = lms[23], hR = lms[24];',
     '        ctx.beginPath();',
-    '        ctx.moveTo(sL.x * W, sL.y * H); ctx.lineTo(sR.x * W, sR.y * H);',
-    '        ctx.lineTo(hR.x * W, hR.y * H); ctx.lineTo(hL.x * W, hL.y * H);',
+    '        ctx.moveTo(PX(sL), PY(sL)); ctx.lineTo(PX(sR), PY(sR));',
+    '        ctx.lineTo(PX(hR), PY(hR)); ctx.lineTo(PX(hL), PY(hL));',
     '        ctx.closePath();',
     '        ctx.globalAlpha = 0.18; ctx.fill(); ctx.globalAlpha = 1;',
     '      }',
-    '      // joint dots',
     '      for (var j = 0; j < part.joints.length; j++) {',
     '        var p = lms[part.joints[j]];',
-    '        ctx.beginPath(); ctx.arc(p.x * W, p.y * H, 4, 0, 7); ctx.fill();',
+    '        ctx.beginPath(); ctx.arc(PX(p), PY(p), 4, 0, 7); ctx.fill();',
     '      }',
     '      var cx = 0, cy = 0;',
     '      for (var k = 0; k < part.joints.length; k++) { cx += lms[part.joints[k]].x; cy += lms[part.joints[k]].y; }',
-    '      label(ctx, part.label, (cx / part.joints.length) * W, (cy / part.joints.length) * H - H * 0.05, part.color, W, H);',
+    '      var lx = rect.dx + (cx / part.joints.length) * rect.dw;',
+    '      var ly = rect.dy + (cy / part.joints.length) * rect.dh - H * 0.05;',
+    '      label(ctx, part.label, lx, ly, part.color);',
     '    }',
     '  }',
     '}',
-    'function drawOutline(o, ctx, W, H) {',
+    'function drawOutline(o, ctx) {',
+    '  var W = c.width, H = c.height;',
     '  ctx.lineWidth = 3; ctx.strokeStyle = "rgba(47,123,255,0.85)";',
     '  for (var i = 0; i < o.connections.length; i++) {',
     '    var pa = o.points[o.connections[i][0]], pb = o.points[o.connections[i][1]];',
     '    if (!pa || !pb) continue;',
-    '    ctx.beginPath(); ctx.moveTo(pa.x * W, pa.y * H); ctx.lineTo(pb.x * W, pb.y * H); ctx.stroke();',
+    '    ctx.beginPath(); ctx.moveTo(PX(pa), PY(pa)); ctx.lineTo(PX(pb), PY(pb)); ctx.stroke();',
     '  }',
     '  ctx.beginPath();',
-    '  ctx.ellipse(o.head.cx * W, o.head.cy * H, o.head.rx * W, o.head.ry * H, 0, 0, 7);',
+    '  ctx.ellipse(rect.dx + o.head.cx * rect.dw, rect.dy + o.head.cy * rect.dh, o.head.rx * rect.dw, o.head.ry * rect.dh, 0, 0, 7);',
     '  ctx.stroke();',
     '}',
     'async function init() {',
@@ -137,7 +146,6 @@ export function buildPoseHtml() {
     '        baseOptions: { modelAssetPath: MODEL, delegate: "CPU" },',
     '        runningMode: "VIDEO", numPoses: 1 });',
     '    }',
-    '    // Higher resolution = the wide lens, not the cropped/zoomed one.',
     '    var CONSTRAINTS = function (f) {',
     '      return { video: { facingMode: { ideal: f }, width: { ideal: 720 }, height: { ideal: 1280 } }, audio: false };',
     '    };',
@@ -154,7 +162,6 @@ export function buildPoseHtml() {
     '    stream = gotStream;',
     '    v.srcObject = stream;',
     '    await v.play();',
-    // Live camera switch: stops the old stream and opens the other lens.
     '    window.setCamera = async function (f) {',
     '      if (f === facing || !stream) return;',
     '      facing = f;',
@@ -171,16 +178,17 @@ export function buildPoseHtml() {
     '    var lastSent = 0;',
     '    function loop() {',
     '      var now = performance.now();',
-    '      if (v.readyState >= 2 && v.videoWidth > 0) {',
-    '        if (c.width !== v.videoWidth) { c.width = v.videoWidth; c.height = v.videoHeight; }',
+    '      if (fitRect() && v.readyState >= 2) {',
     '        var res = landmarker.detectForVideo(v, Math.round(now));',
     '        ctx.clearRect(0, 0, c.width, c.height);',
+    // draw the live frame into the canvas first — overlay lives on top of it
+    '        ctx.drawImage(v, rect.dx, rect.dy, rect.dw, rect.dh);',
     '        var lms = res && res.landmarks && res.landmarks.length ? res.landmarks[0] : null;',
     '        if (lms) {',
-    '          drawParts(lms, ctx, c.width, c.height);',
+    '          drawParts(lms, ctx);',
     '          if (now - lastSent > 90) { lastSent = now; send({ type: "pose", landmarks: lms, w: v.videoWidth, h: v.videoHeight }); }',
     '        } else if (now - lastSent > 500) { lastSent = now; send({ type: "pose", landmarks: null, w: v.videoWidth, h: v.videoHeight }); }',
-    '        if (outline && outline.visible) drawOutline(outline, ctx, c.width, c.height);',
+    '        if (outline && outline.visible) drawOutline(outline, ctx);',
     '      }',
     '      requestAnimationFrame(loop);',
     '    }',
