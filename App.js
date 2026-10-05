@@ -11,7 +11,7 @@ import StatusWindow from './src/screens/StatusWindow';
 import QuestBoardScreen from './src/screens/QuestBoardScreen';
 import RepQuestScreen from './src/screens/RepQuestScreen';
 import SystemScanGPSScreen from './src/screens/SystemScanGPSScreen';
-import CalibrationScreen from './src/screens/CalibrationScreen';
+import BodyScanScreen from './src/screens/BodyScanScreen';
 
 // The dashboard reads real state from the context and renders Torres's
 // pure-display component. The tab bar is intentionally not passed (hidden).
@@ -46,7 +46,7 @@ export default function App() {
       )}
       {screen === 'rep' && <RepQuestScreen onBack={() => setScreen('board')} />}
       {screen === 'gps' && <SystemScanGPSScreen onBack={() => setScreen('board')} />}
-      {screen === 'calib' && <CalibrationScreen onBack={() => setScreen('board')} />}
+      {screen === 'calib' && <BodyScanScreen onBack={() => setScreen('board')} />}
     </HunterProvider>
   );
 }
