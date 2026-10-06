@@ -35,6 +35,7 @@ export default function useLocationTracking(isTracking) {
   const distanceRef = useRef(0);
   const lastPointRef = useRef(null); // last { latitude, longitude }
   const lastTimeRef = useRef(null); // timestamp of the last GPS point
+  const pollRef = useRef(null); // active polling interval
 
   // Ask for permission once, when the screen first uses the hook.
   useEffect(() => {
@@ -123,18 +124,26 @@ export default function useLocationTracking(isTracking) {
       );
       if (cancelled && sub) sub.remove();
 
-      // Instant fix: pin and map center appear the moment BEGIN is pressed,
-      // instead of waiting for the first 5 m of movement.
-      try {
-        onPosition(await getCurrentPositionAsync({ accuracy: Accuracy.High }));
-      } catch (e) {
-        // The watch above will deliver a position once one is available.
-      }
+      // Active polling (every 2 s): getCurrentPositionAsync is proven to work
+      // on every device we test, while the passive watch above is flaky on
+      // some Android builds. Polling is the primary source; the watch is a
+      // bonus stream. Duplicate fixes add 0 km, so they are harmless.
+      const poll = async () => {
+        if (cancelled) return;
+        try {
+          onPosition(await getCurrentPositionAsync({ accuracy: Accuracy.High }));
+        } catch (e) {
+          // one failed poll is not an error — the next one retries
+        }
+      };
+      poll();
+      pollRef.current = setInterval(poll, 2000);
     })();
 
     return () => {
       cancelled = true;
       if (sub) sub.remove();
+      if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [isTracking, permissionGranted]);
 
