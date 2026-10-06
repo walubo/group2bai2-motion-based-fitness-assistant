@@ -71,41 +71,53 @@ const MAP_HTML = `<!DOCTYPE html>
     var routeGlow = L.polyline([], { color: '#a855f7', weight: 13, opacity: 0.25 }).addTo(map);
     var route = L.polyline([], { color: '#a855f7', weight: 5, opacity: 1 }).addTo(map);
     var hunter = null; // the Hunter's live pulsing pin
-    var userMoved = false; // once the Hunter pans/zooms manually, stop auto-zoom
+    var userMoved = false; // set only by REAL user gestures, not programmatic zooms
+    var autoZoom = false; // guards zoomstart during our own animated zooms
 
-    map.on('dragstart zoomstart', function () { userMoved = true; });
+    map.on('zoomstart', function () { if (!autoZoom) userMoved = true; });
+    map.on('dragstart', function () { userMoved = true; });
 
-    // Always available: re-center on the pin at street level.
-    window.centerOnHunter = function () {
-      if (hunter) {
-        userMoved = false;
-        map.setView(hunter.getLatLng(), 17, { animate: true });
+    function autoSetView(center, zoom) {
+      autoZoom = true;
+      map.setView(center, zoom, { animate: true });
+      setTimeout(function () { autoZoom = false; }, 500);
+    }
+
+    // Creates or moves the pin, then flies to it at street level.
+    // Used by the follow logic AND the CENTER ON ME button — so the button
+    // works even if the pin was never created.
+    window.centerOnHunter = function (center) {
+      if (!center) return;
+      userMoved = false;
+      if (!hunter) {
+        hunter = L.marker(center, {
+          icon: L.divIcon({
+            className: 'hunter-pin-wrap',
+            html: '<div class="pin-ring"></div><div class="pin-dot"></div>',
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
+          }),
+        }).addTo(map);
+      } else {
+        hunter.setLatLng(center);
       }
+      autoSetView(center, 17);
     };
 
     // The React side calls this every time new tracking data arrives.
     // points = the trail so far; center = current position (may exist alone).
     window.updateMap = function (points, center) {
+      // skip duplicate points from standing-still fixes
+      if (points.length > 1) {
+        var last = points[points.length - 1], prev = points[points.length - 2];
+        if (last.latitude === prev.latitude && last.longitude === prev.longitude) {
+          points = points.slice(0, -1);
+        }
+      }
       route.setLatLngs(points);
       routeGlow.setLatLngs(points);
       if (center) {
-        if (!hunter) {
-          // First GPS fix: snap to the Hunter and zoom to street level.
-          hunter = L.marker(center, {
-            icon: L.divIcon({
-              className: 'hunter-pin-wrap',
-              html: '<div class="pin-ring"></div><div class="pin-dot"></div>',
-              iconSize: [22, 22],
-              iconAnchor: [11, 11],
-            }),
-          }).addTo(map);
-          map.setView(center, 17, { animate: true });
-        } else {
-          hunter.setLatLng(center);
-          // Follow the pin; zoom stays at street level unless the Hunter
-          // took manual control of the view.
-          map.setView(center, userMoved ? map.getZoom() : 17, { animate: true });
-        }
+        window.centerOnHunter(center);
       }
     };
   </script>
@@ -117,10 +129,13 @@ export default function OsmMap({ routeCoordinates = [], location = null, centerS
   const readyRef = useRef(false);
   const dataRef = useRef({ route: [], loc: null });
 
-  // A centerSignal change (from the CENTER ON ME button) re-centers + zooms.
+  // A centerSignal change (from the CENTER ON ME button) re-centers + zooms,
+  // creating the pin from the latest known position if it doesn't exist yet.
   useEffect(() => {
     if (!centerSignal || !webRef.current || !readyRef.current) return;
-    webRef.current.injectJavaScript('window.centerOnHunter(); true;');
+    webRef.current.injectJavaScript(
+      'window.centerOnHunter(' + JSON.stringify(dataRef.current.loc) + '); true;'
+    );
   }, [centerSignal]);
 
   // Sends the latest route + position into the WebView (no reload).

@@ -116,9 +116,9 @@ export default function useLocationTracking(isTracking) {
       };
 
       sub = await watchPositionAsync(
-        // distanceInterval alone would stay silent until the Hunter moves,
-        // so also allow time-based updates while standing still.
-        { accuracy: Accuracy.High, distanceInterval: 5, timeInterval: 2000 },
+        // time-only: updates arrive every ~2 s even while standing still, so
+        // the pin, trail and centering never depend on the Hunter moving.
+        { accuracy: Accuracy.High, timeInterval: 2000 },
         onPosition
       );
       if (cancelled && sub) sub.remove();
