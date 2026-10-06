@@ -5,7 +5,9 @@
 //         permissionGranted, errorMsg, resetTracking } = useLocationTracking(isTracking);
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Accuracy, requestForegroundPermissionsAsync, watchPositionAsync } from 'expo-location';
+import {
+  Accuracy, getCurrentPositionAsync, hasServicesEnabledAsync, requestForegroundPermissionsAsync, watchPositionAsync,
+} from 'expo-location';
 
 // Haversine formula: straight-line distance between two lat/lng points, in km.
 export function haversineKm(a, b) {
@@ -26,12 +28,14 @@ export default function useLocationTracking(isTracking) {
   const [speedKmH, setSpeedKmH] = useState(0);
   const [elapsedTimeSec, setElapsedTimeSec] = useState(0);
   const [permissionGranted, setPermissionGranted] = useState(false);
+  const [servicesEnabled, setServicesEnabled] = useState(true); // phone-level Location toggle
   const [errorMsg, setErrorMsg] = useState(null);
 
   // Refs hold "moving" values so GPS updates do not need re-renders to be counted.
   const distanceRef = useRef(0);
   const lastPointRef = useRef(null); // last { latitude, longitude }
   const lastTimeRef = useRef(null); // timestamp of the last GPS point
+  const pollRef = useRef(null); // active polling interval
 
   // Ask for permission once, when the screen first uses the hook.
   useEffect(() => {
@@ -40,8 +44,18 @@ export default function useLocationTracking(isTracking) {
       try {
         const { status } = await requestForegroundPermissionsAsync();
         if (!alive) return;
-        if (status === 'granted') setPermissionGranted(true);
-        else setErrorMsg('Location permission denied. The System cannot track you, Hunter.');
+        if (status === 'granted') {
+          setPermissionGranted(true);
+          // The phone's master Location toggle being OFF looks exactly like a
+          // silent GPS from the app's point of view — check and say so.
+          const services = await hasServicesEnabledAsync();
+          if (alive) {
+            setServicesEnabled(services);
+            if (!services) setErrorMsg('Location is turned OFF on this phone. Enable it, then BEGIN QUEST again.');
+          }
+        } else {
+          setErrorMsg('Location permission denied. The System cannot track you, Hunter.');
+        }
       } catch (e) {
         if (alive) setErrorMsg(`Location error: ${e.message}`);
       }
@@ -66,38 +80,70 @@ export default function useLocationTracking(isTracking) {
     let cancelled = false;
 
     (async () => {
-      sub = await watchPositionAsync(
-        { accuracy: Accuracy.High, distanceInterval: 5 }, // update roughly every 5 m
-        (pos) => {
-          const point = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-          setLocation(point);
-          setRouteCoordinates((route) => [...route, point]);
+      // Re-check the master Location toggle every time tracking starts — the
+      // Hunter may have switched it off since the permission was granted.
+      const services = await hasServicesEnabledAsync();
+      if (cancelled) return;
+      setServicesEnabled(services);
+      if (!services) {
+        setErrorMsg('Location is turned OFF on this phone. Enable it, then BEGIN QUEST again.');
+        return;
+      }
+      setErrorMsg(null);
 
-          // Add the distance from the previous point to the total.
-          const last = lastPointRef.current;
-          if (last) distanceRef.current += haversineKm(last, point);
-          lastPointRef.current = point;
-          setDistanceKm(distanceRef.current);
+      // One shared handler for both the instant fix and the movement watch.
+      const onPosition = (pos) => {
+        const point = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+        setLocation(point);
+        setRouteCoordinates((route) => [...route, point]);
 
-          // Speed: prefer the GPS chip's own reading (m/s -> km/h);
-          // fall back to distance/time of the last segment.
-          if (typeof pos.coords.speed === 'number' && pos.coords.speed >= 0) {
-            setSpeedKmH(pos.coords.speed * 3.6);
-          } else {
-            const now = pos.timestamp;
-            const dtSec = lastTimeRef.current ? (now - lastTimeRef.current) / 1000 : 0;
-            const segKm = last ? haversineKm(last, point) : 0;
-            if (dtSec > 0) setSpeedKmH((segKm / dtSec) * 3600);
-          }
-          lastTimeRef.current = pos.timestamp;
+        // Add the distance from the previous point to the total.
+        const last = lastPointRef.current;
+        if (last) distanceRef.current += haversineKm(last, point);
+        lastPointRef.current = point;
+        setDistanceKm(distanceRef.current);
+
+        // Speed: prefer the GPS chip's own reading (m/s -> km/h);
+        // fall back to distance/time of the last segment.
+        if (typeof pos.coords.speed === 'number' && pos.coords.speed >= 0) {
+          setSpeedKmH(pos.coords.speed * 3.6);
+        } else {
+          const now = pos.timestamp;
+          const dtSec = lastTimeRef.current ? (now - lastTimeRef.current) / 1000 : 0;
+          const segKm = last ? haversineKm(last, point) : 0;
+          if (dtSec > 0) setSpeedKmH((segKm / dtSec) * 3600);
         }
+        lastTimeRef.current = pos.timestamp;
+      };
+
+      sub = await watchPositionAsync(
+        // time-only: updates arrive every ~2 s even while standing still, so
+        // the pin, trail and centering never depend on the Hunter moving.
+        { accuracy: Accuracy.High, timeInterval: 2000 },
+        onPosition
       );
       if (cancelled && sub) sub.remove();
+
+      // Active polling (every 2 s): getCurrentPositionAsync is proven to work
+      // on every device we test, while the passive watch above is flaky on
+      // some Android builds. Polling is the primary source; the watch is a
+      // bonus stream. Duplicate fixes add 0 km, so they are harmless.
+      const poll = async () => {
+        if (cancelled) return;
+        try {
+          onPosition(await getCurrentPositionAsync({ accuracy: Accuracy.High }));
+        } catch (e) {
+          // one failed poll is not an error — the next one retries
+        }
+      };
+      poll();
+      pollRef.current = setInterval(poll, 2000);
     })();
 
     return () => {
       cancelled = true;
       if (sub) sub.remove();
+      if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [isTracking, permissionGranted]);
 
@@ -119,6 +165,7 @@ export default function useLocationTracking(isTracking) {
     speedKmH, // current speed, km/h
     elapsedTimeSec, // seconds tracked
     permissionGranted,
+    servicesEnabled, // is the phone's master Location toggle ON?
     errorMsg,
     resetTracking,
   };
