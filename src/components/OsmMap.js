@@ -41,6 +41,17 @@ const MAP_HTML = `<!DOCTYPE html>
 
     var route = L.polyline([], { color: '#a855f7', weight: 5, opacity: 1 }).addTo(map);
     var hunter = null; // the Hunter's position pin
+    var userMoved = false; // once the Hunter pans/zooms manually, stop auto-zoom
+
+    map.on('dragstart zoomstart', function () { userMoved = true; });
+
+    // Always available: re-center on the pin at street level.
+    window.centerOnHunter = function () {
+      if (hunter) {
+        userMoved = false;
+        map.setView(hunter.getLatLng(), 17, { animate: true });
+      }
+    };
 
     // The React side calls this every time new tracking data arrives.
     // points = the trail so far; center = current position (may exist alone).
@@ -55,8 +66,9 @@ const MAP_HTML = `<!DOCTYPE html>
           map.setView(center, 17, { animate: true });
         } else {
           hunter.setLatLng(center);
-          // Afterwards keep whatever zoom the Hunter chose, just follow.
-          map.setView(center, map.getZoom(), { animate: true });
+          // Follow the pin; zoom stays at street level unless the Hunter
+          // took manual control of the view.
+          map.setView(center, userMoved ? map.getZoom() : 17, { animate: true });
         }
       }
     };
@@ -64,10 +76,16 @@ const MAP_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-export default function OsmMap({ routeCoordinates = [], location = null, style }) {
+export default function OsmMap({ routeCoordinates = [], location = null, centerSignal = 0, style }) {
   const webRef = useRef(null);
   const readyRef = useRef(false);
   const dataRef = useRef({ route: [], loc: null });
+
+  // A centerSignal change (from the CENTER ON ME button) re-centers + zooms.
+  useEffect(() => {
+    if (!centerSignal || !webRef.current || !readyRef.current) return;
+    webRef.current.injectJavaScript('window.centerOnHunter(); true;');
+  }, [centerSignal]);
 
   // Sends the latest route + position into the WebView (no reload).
   const push = useCallback(() => {

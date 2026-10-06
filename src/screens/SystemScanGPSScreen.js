@@ -23,6 +23,7 @@ const STATUS_LABEL = {
 function GPSTestScreen({ onBack }) {
   const quest = useHunter();
   const [isTracking, setIsTracking] = useState(false);
+  const [centerSignal, setCenterSignal] = useState(0); // re-center button presses
   const gps = useLocationTracking(isTracking);
 
   // Feed tracking values into the context (the "back end" decides the result).
@@ -70,6 +71,7 @@ function GPSTestScreen({ onBack }) {
       <OsmMap
         routeCoordinates={gps.routeCoordinates}
         location={gps.location}
+        centerSignal={centerSignal}
         style={StyleSheet.absoluteFill}
       />
 
@@ -128,6 +130,9 @@ function GPSTestScreen({ onBack }) {
         </GlowPressable>
         <GlowPressable glowColor={colors.success} disabled={quest.questStatus === 'IN PROGRESS'} onPress={resetQuest} style={[styles.button, styles.flex1]}>
           <Text style={[styles.buttonText, { color: colors.success }]}>RESET</Text>
+        </GlowPressable>
+        <GlowPressable glowColor={colors.blueLight} onPress={() => setCenterSignal((s) => s + 1)} style={styles.back}>
+          <Text style={styles.backText}>{'\u25C9'}</Text>
         </GlowPressable>
         <Pressable onPress={onBack} hitSlop={8} style={styles.back}>
           <Text style={styles.backText}>{'>'}{'<'}</Text>
