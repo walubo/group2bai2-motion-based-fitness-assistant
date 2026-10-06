@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Accuracy, hasServicesEnabledAsync, requestForegroundPermissionsAsync, watchPositionAsync,
+  Accuracy, getCurrentPositionAsync, hasServicesEnabledAsync, requestForegroundPermissionsAsync, watchPositionAsync,
 } from 'expo-location';
 
 // Haversine formula: straight-line distance between two lat/lng points, in km.
@@ -90,33 +90,46 @@ export default function useLocationTracking(isTracking) {
       }
       setErrorMsg(null);
 
-      sub = await watchPositionAsync(
-        { accuracy: Accuracy.High, distanceInterval: 5 }, // update roughly every 5 m
-        (pos) => {
-          const point = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-          setLocation(point);
-          setRouteCoordinates((route) => [...route, point]);
+      // One shared handler for both the instant fix and the movement watch.
+      const onPosition = (pos) => {
+        const point = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+        setLocation(point);
+        setRouteCoordinates((route) => [...route, point]);
 
-          // Add the distance from the previous point to the total.
-          const last = lastPointRef.current;
-          if (last) distanceRef.current += haversineKm(last, point);
-          lastPointRef.current = point;
-          setDistanceKm(distanceRef.current);
+        // Add the distance from the previous point to the total.
+        const last = lastPointRef.current;
+        if (last) distanceRef.current += haversineKm(last, point);
+        lastPointRef.current = point;
+        setDistanceKm(distanceRef.current);
 
-          // Speed: prefer the GPS chip's own reading (m/s -> km/h);
-          // fall back to distance/time of the last segment.
-          if (typeof pos.coords.speed === 'number' && pos.coords.speed >= 0) {
-            setSpeedKmH(pos.coords.speed * 3.6);
-          } else {
-            const now = pos.timestamp;
-            const dtSec = lastTimeRef.current ? (now - lastTimeRef.current) / 1000 : 0;
-            const segKm = last ? haversineKm(last, point) : 0;
-            if (dtSec > 0) setSpeedKmH((segKm / dtSec) * 3600);
-          }
-          lastTimeRef.current = pos.timestamp;
+        // Speed: prefer the GPS chip's own reading (m/s -> km/h);
+        // fall back to distance/time of the last segment.
+        if (typeof pos.coords.speed === 'number' && pos.coords.speed >= 0) {
+          setSpeedKmH(pos.coords.speed * 3.6);
+        } else {
+          const now = pos.timestamp;
+          const dtSec = lastTimeRef.current ? (now - lastTimeRef.current) / 1000 : 0;
+          const segKm = last ? haversineKm(last, point) : 0;
+          if (dtSec > 0) setSpeedKmH((segKm / dtSec) * 3600);
         }
+        lastTimeRef.current = pos.timestamp;
+      };
+
+      sub = await watchPositionAsync(
+        // distanceInterval alone would stay silent until the Hunter moves,
+        // so also allow time-based updates while standing still.
+        { accuracy: Accuracy.High, distanceInterval: 5, timeInterval: 2000 },
+        onPosition
       );
       if (cancelled && sub) sub.remove();
+
+      // Instant fix: pin and map center appear the moment BEGIN is pressed,
+      // instead of waiting for the first 5 m of movement.
+      try {
+        onPosition(await getCurrentPositionAsync({ accuracy: Accuracy.High }));
+      } catch (e) {
+        // The watch above will deliver a position once one is available.
+      }
     })();
 
     return () => {
