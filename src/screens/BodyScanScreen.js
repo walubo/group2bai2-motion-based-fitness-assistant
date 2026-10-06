@@ -228,6 +228,10 @@ export default function BodyScanScreen({ onBack }) {
         <View style={styles.hudInner}>
           <Text style={styles.title}>{phase === 'test' ? 'CAPABILITY TEST' : 'SYSTEM SCAN'}</Text>
           <Text style={[styles.status, phase === 'ready' && { color: colors.success }]}>{statusLabel}</Text>
+          <Text style={styles.camInfo}>
+            CAM {size.width}x{size.height} {size.width < size.height ? '(PORTRAIT)' : '(LANDSCAPE)'} ·{' '}
+            {facing === 'user' ? 'FRONT' : 'BACK'}
+          </Text>
 
           {(phase === 'scan' || phase === 'test') && (
             <View style={styles.barOuter}>
@@ -341,6 +345,7 @@ const styles = StyleSheet.create({
   },
   title: { color: '#ffffff', fontFamily: fonts.heading, fontSize: 13, fontWeight: 'bold', letterSpacing: 3 },
   status: { color: '#ffffff', fontFamily: fonts.display, fontSize: 22, fontWeight: 'bold', marginTop: 4 },
+  camInfo: { color: colors.mutedText, fontFamily: fonts.heading, fontSize: 9, letterSpacing: 1, marginTop: 3 },
   instruction: { color: '#ffffff', fontFamily: fonts.heading, fontSize: 17, fontWeight: 'bold', marginTop: spacing.sm },
   repCount: { color: colors.blueLight },
   barOuter: { height: 8, backgroundColor: '#0a1630', borderRadius: 4, marginVertical: spacing.sm, overflow: 'hidden' },
