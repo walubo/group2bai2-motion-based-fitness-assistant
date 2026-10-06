@@ -22,7 +22,6 @@ export function buildPoseHtml() {
     'var MODEL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";',
     'var WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";',
     'var LIB = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";',
-    'var ROTATION = -90; // degrees applied when the raw stream is landscape',
     'var PARTS = [',
     '  { label: "HEAD",   color: "#4de8ff", joints: [0, 7, 8],         bones: [], quad: false },',
     '  { label: "TORSO",  color: "#2f7bff", joints: [11, 12, 23, 24],  bones: [[11, 12], [11, 23], [12, 24], [23, 24]], quad: true },',
@@ -122,21 +121,14 @@ export function buildPoseHtml() {
     '  ctx.ellipse(rect.dx + o.head.cx * rect.dw, rect.dy + o.head.cy * rect.dh, o.head.rx * rect.dw, o.head.ry * rect.dh, 0, 0, 7);',
     '  ctx.stroke();',
     '}',
-    // Rotates landscape camera frames onto a portrait canvas (or passes
-    // portrait frames straight through).
+    // Center-crops the (upright) landscape camera frame to a portrait view —
+    // full vertical field of view, no rotation, no digital zoom.
     'function processFrame() {',
     '  var vw = v.videoWidth, vh = v.videoHeight;',
-    '  if (vw > vh) {',
-    '    if (proc.width !== vh) { proc.width = vh; proc.height = vw; }',
-    '    pctx.save();',
-    '    pctx.translate(proc.width / 2, proc.height / 2);',
-    '    pctx.rotate((ROTATION * Math.PI) / 180);',
-    '    pctx.drawImage(v, -vw / 2, -vh / 2);',
-    '    pctx.restore();',
-    '  } else {',
-    '    if (proc.width !== vw) { proc.width = vw; proc.height = vh; }',
-    '    pctx.drawImage(v, 0, 0);',
-    '  }',
+    '  if (!vw || !vh) return;',
+    '  var cropW = Math.round(Math.min(vw, vh * 9 / 16));',
+    '  if (proc.width !== cropW) { proc.width = cropW; proc.height = vh; }',
+    '  pctx.drawImage(v, (vw - cropW) / 2, 0, cropW, vh, 0, 0, cropW, vh);',
     '}',
     'async function init() {',
     '  try {',
@@ -157,7 +149,10 @@ export function buildPoseHtml() {
     '        runningMode: "VIDEO", numPoses: 1 });',
     '    }',
     '    var CONSTRAINTS = function (f) {',
-    '      return { video: { facingMode: { ideal: f }, width: { ideal: 720 }, height: { ideal: 1280 } }, audio: false };',
+    // Request the camera's NATIVE landscape resolution: the full field of
+    // view without the browser's center-crop zoom. processFrame() crops it
+    // to portrait ourselves.
+    '      return { video: { facingMode: { ideal: f }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false };',
     '    };',
     '    var gotStream = null;',
     '    try {',
