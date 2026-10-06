@@ -71,24 +71,15 @@ const MAP_HTML = `<!DOCTYPE html>
     var routeGlow = L.polyline([], { color: '#a855f7', weight: 13, opacity: 0.25 }).addTo(map);
     var route = L.polyline([], { color: '#a855f7', weight: 5, opacity: 1 }).addTo(map);
     var hunter = null; // the Hunter's live pulsing pin
-    var userMoved = false; // set only by REAL user gestures, not programmatic zooms
+    var userMoved = false; // set only by REAL user gestures
     var autoZoom = false; // guards zoomstart during our own animated zooms
 
     map.on('zoomstart', function () { if (!autoZoom) userMoved = true; });
     map.on('dragstart', function () { userMoved = true; });
 
-    function autoSetView(center, zoom) {
-      autoZoom = true;
-      map.setView(center, zoom, { animate: true });
-      setTimeout(function () { autoZoom = false; }, 500);
-    }
-
-    // Creates or moves the pin, then flies to it at street level.
-    // Used by the follow logic AND the CENTER ON ME button — so the button
-    // works even if the pin was never created.
-    window.centerOnHunter = function (center) {
-      if (!center) return;
-      userMoved = false;
+    // center must be a Leaflet latlng array [lat, lng] — the React side
+    // converts {latitude, longitude} objects before injecting.
+    function ensurePin(center) {
       if (!hunter) {
         hunter = L.marker(center, {
           icon: L.divIcon({
@@ -101,23 +92,36 @@ const MAP_HTML = `<!DOCTYPE html>
       } else {
         hunter.setLatLng(center);
       }
-      autoSetView(center, 17);
+      return hunter;
+    }
+
+    // CENTER ON ME button: always snaps to the pin at street level and
+    // returns the view to auto-follow.
+    window.centerOnHunter = function (center) {
+      if (!center) return;
+      userMoved = false;
+      ensurePin(center);
+      autoZoom = true;
+      map.setView(center, 17, { animate: true });
+      setTimeout(function () { autoZoom = false; }, 500);
     };
 
     // The React side calls this every time new tracking data arrives.
-    // points = the trail so far; center = current position (may exist alone).
+    // points = [[lat, lng], ...] trail; center = [lat, lng] current position.
     window.updateMap = function (points, center) {
-      // skip duplicate points from standing-still fixes
-      if (points.length > 1) {
-        var last = points[points.length - 1], prev = points[points.length - 2];
-        if (last.latitude === prev.latitude && last.longitude === prev.longitude) {
-          points = points.slice(0, -1);
-        }
-      }
       route.setLatLngs(points);
       routeGlow.setLatLngs(points);
-      if (center) {
-        window.centerOnHunter(center);
+      if (!center) return;
+      if (!hunter) {
+        // First fix: create the pin and zoom to street level once.
+        ensurePin(center);
+        autoZoom = true;
+        map.setView(center, 17, { animate: true });
+        setTimeout(function () { autoZoom = false; }, 500);
+      } else {
+        ensurePin(center);
+        // Follow by PANNING ONLY — the Hunter's zoom is never touched.
+        if (!userMoved) map.panTo(center, { animate: true });
       }
     };
   </script>
@@ -133,17 +137,24 @@ export default function OsmMap({ routeCoordinates = [], location = null, centerS
   // creating the pin from the latest known position if it doesn't exist yet.
   useEffect(() => {
     if (!centerSignal || !webRef.current || !readyRef.current) return;
+    const loc = dataRef.current.loc;
+    if (!loc) return;
+    const ctr = [loc.latitude, loc.longitude]; // Leaflet wants [lat, lng]
     webRef.current.injectJavaScript(
-      'window.centerOnHunter(' + JSON.stringify(dataRef.current.loc) + '); true;'
+      'window.centerOnHunter(' + JSON.stringify(ctr) + '); true;'
     );
   }, [centerSignal]);
 
   // Sends the latest route + position into the WebView (no reload).
+  // Coordinates are converted to Leaflet's [lat, lng] format here — the map
+  // side never sees {latitude, longitude} objects.
   const push = useCallback(() => {
     if (!webRef.current || !readyRef.current) return;
     const { route, loc } = dataRef.current;
+    const points = route.map((p) => [p.latitude, p.longitude]);
+    const ctr = loc ? [loc.latitude, loc.longitude] : null;
     webRef.current.injectJavaScript(
-      `window.updateMap(${JSON.stringify(route)}, ${JSON.stringify(loc)}); true;`
+      `window.updateMap(${JSON.stringify(points)}, ${JSON.stringify(ctr)}); true;`
     );
   }, []);
 
