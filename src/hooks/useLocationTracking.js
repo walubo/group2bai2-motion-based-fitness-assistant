@@ -5,7 +5,9 @@
 //         permissionGranted, errorMsg, resetTracking } = useLocationTracking(isTracking);
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Accuracy, requestForegroundPermissionsAsync, watchPositionAsync } from 'expo-location';
+import {
+  Accuracy, hasServicesEnabledAsync, requestForegroundPermissionsAsync, watchPositionAsync,
+} from 'expo-location';
 
 // Haversine formula: straight-line distance between two lat/lng points, in km.
 export function haversineKm(a, b) {
@@ -26,6 +28,7 @@ export default function useLocationTracking(isTracking) {
   const [speedKmH, setSpeedKmH] = useState(0);
   const [elapsedTimeSec, setElapsedTimeSec] = useState(0);
   const [permissionGranted, setPermissionGranted] = useState(false);
+  const [servicesEnabled, setServicesEnabled] = useState(true); // phone-level Location toggle
   const [errorMsg, setErrorMsg] = useState(null);
 
   // Refs hold "moving" values so GPS updates do not need re-renders to be counted.
@@ -40,8 +43,18 @@ export default function useLocationTracking(isTracking) {
       try {
         const { status } = await requestForegroundPermissionsAsync();
         if (!alive) return;
-        if (status === 'granted') setPermissionGranted(true);
-        else setErrorMsg('Location permission denied. The System cannot track you, Hunter.');
+        if (status === 'granted') {
+          setPermissionGranted(true);
+          // The phone's master Location toggle being OFF looks exactly like a
+          // silent GPS from the app's point of view — check and say so.
+          const services = await hasServicesEnabledAsync();
+          if (alive) {
+            setServicesEnabled(services);
+            if (!services) setErrorMsg('Location is turned OFF on this phone. Enable it, then BEGIN QUEST again.');
+          }
+        } else {
+          setErrorMsg('Location permission denied. The System cannot track you, Hunter.');
+        }
       } catch (e) {
         if (alive) setErrorMsg(`Location error: ${e.message}`);
       }
@@ -66,6 +79,17 @@ export default function useLocationTracking(isTracking) {
     let cancelled = false;
 
     (async () => {
+      // Re-check the master Location toggle every time tracking starts — the
+      // Hunter may have switched it off since the permission was granted.
+      const services = await hasServicesEnabledAsync();
+      if (cancelled) return;
+      setServicesEnabled(services);
+      if (!services) {
+        setErrorMsg('Location is turned OFF on this phone. Enable it, then BEGIN QUEST again.');
+        return;
+      }
+      setErrorMsg(null);
+
       sub = await watchPositionAsync(
         { accuracy: Accuracy.High, distanceInterval: 5 }, // update roughly every 5 m
         (pos) => {
@@ -119,6 +143,7 @@ export default function useLocationTracking(isTracking) {
     speedKmH, // current speed, km/h
     elapsedTimeSec, // seconds tracked
     permissionGranted,
+    servicesEnabled, // is the phone's master Location toggle ON?
     errorMsg,
     resetTracking,
   };

@@ -52,9 +52,18 @@ function GPSTestScreen({ onBack }) {
   };
 
   const denied = !gps.permissionGranted && gps.errorMsg;
-  const statusLabel = denied ? 'PERMISSION DENIED' : STATUS_LABEL[quest.questStatus];
+  const searching = isTracking && gps.location === null; // tracking but no satellite fix yet
+  const statusLabel = denied
+    ? 'PERMISSION DENIED'
+    : searching
+      ? 'SEARCHING FOR GPS FIX'
+      : STATUS_LABEL[quest.questStatus];
   const statusColor =
-    quest.questStatus === 'CLEARED' ? colors.success : denied ? colors.danger : colors.blueLight;
+    quest.questStatus === 'CLEARED'
+      ? colors.success
+      : denied || !gps.servicesEnabled || searching
+        ? colors.danger
+        : colors.blueLight;
 
   return (
     <View style={styles.screen}>
@@ -97,10 +106,15 @@ function GPSTestScreen({ onBack }) {
           <View style={styles.statRow}>
             <Text style={styles.stat}>TIME {MMSS(quest.elapsedTimeSec)}</Text>
             <Text style={styles.stat}>SPEED {gps.speedKmH.toFixed(1)} KM/H</Text>
+            <Text style={styles.stat}>GPS FIXES {gps.routeCoordinates.length}</Text>
             <Text style={styles.stat}>EXP {quest.exp}</Text>
           </View>
           <Text style={styles.note}>
-            {quest.notification || gps.errorMsg || 'The System awaits your command, Hunter.'}
+            {quest.notification ||
+              gps.errorMsg ||
+              (searching
+                ? 'No satellites yet — go outside under open sky, Hunter.'
+                : 'The System awaits your command, Hunter.')}
           </Text>
         </View>
       </FadeSlideIn>
