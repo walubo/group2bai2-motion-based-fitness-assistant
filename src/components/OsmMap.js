@@ -39,7 +39,7 @@ const MAP_HTML = `<!DOCTYPE html>
       attribution: '&copy; OpenStreetMap contributors',
     }).addTo(map);
 
-    var route = L.polyline([], { color: '#a855f7', weight: 4, opacity: 0.9 }).addTo(map);
+    var route = L.polyline([], { color: '#a855f7', weight: 5, opacity: 1 }).addTo(map);
     var hunter = null; // the Hunter's position pin
 
     // The React side calls this every time new tracking data arrives.
@@ -48,13 +48,16 @@ const MAP_HTML = `<!DOCTYPE html>
       route.setLatLngs(points);
       if (center) {
         if (!hunter) {
+          // First GPS fix: snap to the Hunter and zoom to street level.
           hunter = L.circleMarker(center, {
             radius: 7, color: '#4de8ff', weight: 2, fillColor: '#4de8ff', fillOpacity: 1,
           }).addTo(map);
+          map.setView(center, 17, { animate: true });
         } else {
           hunter.setLatLng(center);
+          // Afterwards keep whatever zoom the Hunter chose, just follow.
+          map.setView(center, map.getZoom(), { animate: true });
         }
-        map.setView(center, map.getZoom(), { animate: true });
       }
     };
   </script>
