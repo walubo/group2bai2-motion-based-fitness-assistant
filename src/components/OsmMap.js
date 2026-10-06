@@ -28,19 +28,49 @@ const MAP_HTML = `<!DOCTYPE html>
       font-size: 9px;
     }
     .leaflet-control-attribution a { color: #4de8ff !important; }
+    /* live pulsing Hunter pin */
+    .hunter-pin-wrap { background: transparent; border: none; }
+    .pin-dot {
+      position: absolute; left: 5px; top: 5px; width: 12px; height: 12px;
+      border-radius: 50%; background: #4de8ff; border: 2px solid #ffffff;
+      box-shadow: 0 0 10px #4de8ff;
+    }
+    .pin-ring {
+      position: absolute; width: 22px; height: 22px; border-radius: 50%;
+      border: 2px solid #4de8ff;
+      animation: hunter-pulse 1.6s ease-out infinite;
+    }
+    @keyframes hunter-pulse {
+      0% { transform: scale(0.5); opacity: 1; }
+      100% { transform: scale(1.7); opacity: 0; }
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
   <script>
     var map = L.map('map', { zoomControl: false }).setView([14.5995, 120.9842], 16);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // Primary OSM tile server with an automatic failover mirror: if the
+    // primary rate-limits or times out, the whole map switches to the mirror
+    // without the Hunter noticing.
+    var tileLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors',
     }).addTo(map);
+    var tileErrors = 0;
+    var switched = false;
+    tileLayer.on('tileerror', function () {
+      tileErrors += 1;
+      if (tileErrors >= 3 && !switched) {
+        switched = true;
+        tileLayer.setUrl('https://tile.openstreetmap.de/{z}/{x}/{y}.png');
+      }
+    });
 
+    // Trail: a soft glow underlay plus a solid line, so it reads on any map.
+    var routeGlow = L.polyline([], { color: '#a855f7', weight: 13, opacity: 0.25 }).addTo(map);
     var route = L.polyline([], { color: '#a855f7', weight: 5, opacity: 1 }).addTo(map);
-    var hunter = null; // the Hunter's position pin
+    var hunter = null; // the Hunter's live pulsing pin
     var userMoved = false; // once the Hunter pans/zooms manually, stop auto-zoom
 
     map.on('dragstart zoomstart', function () { userMoved = true; });
@@ -57,11 +87,17 @@ const MAP_HTML = `<!DOCTYPE html>
     // points = the trail so far; center = current position (may exist alone).
     window.updateMap = function (points, center) {
       route.setLatLngs(points);
+      routeGlow.setLatLngs(points);
       if (center) {
         if (!hunter) {
           // First GPS fix: snap to the Hunter and zoom to street level.
-          hunter = L.circleMarker(center, {
-            radius: 7, color: '#4de8ff', weight: 2, fillColor: '#4de8ff', fillOpacity: 1,
+          hunter = L.marker(center, {
+            icon: L.divIcon({
+              className: 'hunter-pin-wrap',
+              html: '<div class="pin-ring"></div><div class="pin-dot"></div>',
+              iconSize: [22, 22],
+              iconAnchor: [11, 11],
+            }),
           }).addTo(map);
           map.setView(center, 17, { animate: true });
         } else {
