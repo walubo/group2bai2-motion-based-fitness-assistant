@@ -5,10 +5,15 @@ Each member adds their **name and role** to this file on their own branch, then 
 | Name | GitHub Username | Role |
 |------|-----------------|------|
 | Aries R. Magto Jr. | walubo | Leader |
-| John Louie Torres | torresjohnlouie5-gif | (add your role) |
+| John Louie Torres | torresjohnlouie5-gif | Member |
 | Yanyan Matos | yanyanmatos24 | (add your role) |
+<<<<<<< HEAD
 | Junrey Roxas | roxasjunrey14-blip | (add your role) |
 | Mae Ann C. Garbo | MaeAnn31 | Documenter |
+=======
+| Junrey Roxas | roxasjunrey14-blip | Backend Developer |
+| Mae Ann | MaeAnn31 | (add your role) |
+>>>>>>> origin/main
 | Junemarie Subrio | subriojunemarie4-collab | (add your role) |
 
 **How to add yourself:**
