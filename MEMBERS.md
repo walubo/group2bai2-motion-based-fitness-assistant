@@ -5,7 +5,7 @@ Each member adds their **name and role** to this file on their own branch, then 
 | Name | GitHub Username | Role |
 |------|-----------------|------|
 | Aries R. Magto Jr. | walubo | Leader |
-| John Louie Torres | torresjohnlouie5-gif | (add your role) |
+| John Louie Torres | torresjohnlouie5-gif | Member |
 | Yanyan Matos | yanyanmatos24 | (add your role) |
 | Junrey Roxas | roxasjunrey14-blip | (add your role) |
 | Mae Ann | MaeAnn31 | (add your role) |
