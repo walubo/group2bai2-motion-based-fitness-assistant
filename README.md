@@ -34,7 +34,7 @@ See [MEMBERS.md](MEMBERS.md) for the full roster with roles.
 | @expo/vector-icons | ^15.0.2 |
 | Node.js (development) | v24.19.0 |
 | npm (development) | 11.17.0 |
-10:27 PM
+
 ## How to Run
 
 1. Install [Node.js](https://nodejs.org/) (LTS) and the **Expo Go** app on your Android/iOS phone.
