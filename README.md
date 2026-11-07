@@ -13,6 +13,7 @@ This repository is the shared team repository of the PIT team.
 | Yanyan Matos | [@yanyanmatos24](https://github.com/yanyanmatos24) | Member |
 | Junrey Roxas | [@roxasjunrey14-blip](https://github.com/roxasjunrey14-blip) | Member |
 | Mae Ann | [@MaeAnn31](https://github.com/MaeAnn31) | Member |
+| Junemarie Subrio | [@subriojunemarie4-collab](https://github.com/subriojunemarie4-collab) | Member |
 
 See [MEMBERS.md](MEMBERS.md) for the full roster with roles.
 
