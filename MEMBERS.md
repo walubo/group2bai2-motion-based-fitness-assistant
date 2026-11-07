@@ -9,7 +9,7 @@ Each member adds their **name and role** to this file on their own branch, then 
 | Yanyan Matos | yanyanmatos24 | (add your role) |
 | Junrey Roxas | roxasjunrey14-blip | (add your role) |
 | Mae Ann | MaeAnn31 | (add your role) |
-| Junemarie Subrio | subriojunemarie4-collab | (add your role) |
+| Junemarie Subrio | subriojunemarie4-collab | (SDG quality reviewer) |
 
 **How to add yourself:**
 
