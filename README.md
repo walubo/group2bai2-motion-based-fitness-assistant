@@ -1,4 +1,4 @@
-# Group 3 — Motion-Based Fitness Assistant
+# Group 2bai2 — Motion-Based Fitness Assistant
 
 A fitness app inspired by *Solo Leveling*, built with Expo (React Native). The app uses the device camera for motion-based exercise tracking (full-body scan, guided reps), GPS for outdoor quest/trail navigation with a live map, and a leveling system that lets users train and "level up" like the anime's protagonist.
 
